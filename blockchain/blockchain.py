@@ -41,7 +41,7 @@ from flask_cors import CORS
 
 MINING_SENDER = "THE BLOCKCHAIN"
 MINING_REWARD = 1
-MINING_DIFFICULTY = 2
+MINING_DIFFICULTY = 4
 
 
 class Blockchain:
@@ -54,7 +54,7 @@ class Blockchain:
         #Generate random number to be used as node_id
         self.node_id = str(uuid4()).replace('-', '')
         #Create genesis block
-        self.create_block(0, '00')
+        self.create_block(0, '00', '00')
 
 
     def register_node(self, node_url):
@@ -105,15 +105,16 @@ class Blockchain:
                 return False
 
 
-    def create_block(self, nonce, previous_hash):
+    def create_block(self, nonce, previous_hash, current_hash):
         """
         Add a block of transactions to the blockchain
         """
         block = {'block_number': len(self.chain) + 1,
-                'timestamp': time(),
-                'transactions': self.transactions,
+                'current_hash': current_hash,
                 'nonce': nonce,
-                'previous_hash': previous_hash}
+                'previous_hash': previous_hash,
+                'timestamp': time(),
+                'transactions': self.transactions}
 
         # Reset the current list of transactions
         self.transactions = []
@@ -142,9 +143,11 @@ class Blockchain:
         nonce = 0
         while self.valid_proof(self.transactions, last_hash, nonce) is False:
             nonce += 1
-
-        return nonce
-
+        
+        guess = (str(self.transactions)+str(last_hash)+str(nonce)).encode()
+        guess_hash = hashlib.sha256(guess).hexdigest()
+        current_hash = guess_hash
+        return nonce, current_hash
 
     def valid_proof(self, transactions, last_hash, nonce, difficulty=MINING_DIFFICULTY):
         """
@@ -195,21 +198,32 @@ class Blockchain:
         new_chain = None
 
         # We're only looking for chains longer than ours
-        max_length = len(self.chain)
-
+       # print(self.chain[-1]["block_number"])
+        max_length = self.chain[-1]["block_number"]#len(self.chain)
+        
         # Grab and verify the chains from all the nodes in our network
         for node in neighbours:
             print('http://' + node + '/chain')
             response = requests.get('http://' + node + '/chain')
-
+        
             if response.status_code == 200:
                 length = response.json()['length']
                 chain = response.json()['chain']
 
+                print("status check\n")
+                print("max_length : ")
+                print(max_length)
+                print('\n')
+                print("self.valid_chain(chain) : ")
+                print(self.valid_chain(chain))               
+                print('\n')
+
                 # Check if the length is longer and the chain is valid
                 if length > max_length and self.valid_chain(chain):
+                    print("length check\n")
                     max_length = length
                     new_chain = chain
+                    print(max_length + " " + new_chain)
 
         # Replace our chain if we discovered a new, valid chain longer than ours
         if new_chain:
@@ -253,6 +267,7 @@ def new_transaction():
         response = {'message': 'Transaction will be added to Block '+ str(transaction_result)}
         return jsonify(response), 201
 
+
 @app.route('/transactions/get', methods=['GET'])
 def get_transactions():
     #Get transactions from transactions pool
@@ -260,6 +275,7 @@ def get_transactions():
 
     response = {'transactions': transactions}
     return jsonify(response), 200
+
 
 @app.route('/chain', methods=['GET'])
 def full_chain():
@@ -269,24 +285,28 @@ def full_chain():
     }
     return jsonify(response), 200
 
+
 @app.route('/mine', methods=['GET'])
 def mine():
     # We run the proof of work algorithm to get the next proof...
     last_block = blockchain.chain[-1]
-    nonce = blockchain.proof_of_work()
+    nonce, current_hash = blockchain.proof_of_work()
 
     # We must receive a reward for finding the proof.
     blockchain.submit_transaction(sender_address=MINING_SENDER, recipient_address=blockchain.node_id, value=MINING_REWARD, signature="")
 
     # Forge the new Block by adding it to the chain
-    previous_hash = blockchain.hash(last_block)
-    block = blockchain.create_block(nonce, previous_hash)
+    # It is so weird because it create previous hash in current block
+    previous_hash = last_block['current_hash']#blockchain.hash(last_block)
+
+    block = blockchain.create_block(nonce, previous_hash, current_hash)    
 
     response = {
         'message': "New Block Forged",
         'block_number': block['block_number'],
         'transactions': block['transactions'],
         'nonce': block['nonce'],
+        'current_hash' : block['current_hash'],
         'previous_hash': block['previous_hash'],
     }
     return jsonify(response), 200
@@ -345,11 +365,3 @@ if __name__ == '__main__':
     port = args.port
 
     app.run(host='127.0.0.1', port=port)
-
-
-
-
-
-
-
-
