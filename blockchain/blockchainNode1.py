@@ -38,7 +38,6 @@ from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 
 
-
 MINING_SENDER = "Node1"
 MINING_REWARD = 1
 MINING_DIFFICULTY = 4
@@ -296,6 +295,29 @@ def mine():
         'previous_hash': block['previous_hash'],
     }
     return jsonify(response), 200
+
+@app.route('/check_avg_mining_time', methods =['get'])
+def check_avg_mineing_time():
+    loop_count = 50
+    num_of_gen = loop_count
+    total_elapse_time = 0
+    while loop_count >=0:
+        start_time = time()
+        block_for_test = Blockchain()
+        _ = block_for_test.chain[-1]
+        _, _ = block_for_test.proof_of_work()
+        end_time = time()
+        total_elapse_time += (end_time - start_time)
+        loop_count -= 1
+
+    average_generating_time = total_elapse_time / num_of_gen
+    time_inforamtion = {
+        'average_generating_time(sec)' : average_generating_time,
+        'difficulty' : MINING_DIFFICULTY,
+        'total_elapse_time(sec)' : total_elapse_time,
+        'number_of_generating' : num_of_gen
+    }
+    return jsonify(time_inforamtion), 200
 
 
 
